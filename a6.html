@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星際防衛戰</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; min-height: 100vh; display: grid; place-items: center;
+            padding: 20px; color: #eaf6ff; font-family: system-ui, sans-serif;
+            background: radial-gradient(ellipse at 50% 20%, #172b59 0%, #080e22 55%, #030611 100%);
+        }
+        .game { width: min(100%, 760px); }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+        h1 { margin: 0; font-size: clamp(1.25rem, 4vw, 2rem); letter-spacing: .12em; color: #8ceaff; text-shadow: 0 0 18px #27bfff; }
+        .stats { display: flex; gap: 18px; font-weight: 700; color: #c8d9ff; }
+        .stats span { color: #fff; }
+        .screen { position: relative; overflow: hidden; border: 1px solid #4b80bd; border-radius: 12px; box-shadow: 0 0 35px #1d76c455; background: #050a19; }
+        canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; }
+        .overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; background: #050a19bb; }
+        .overlay[hidden] { display: none; }
+        .card { max-width: 420px; }
+        .card h2 { margin: 0 0 8px; font-size: clamp(1.5rem, 5vw, 2.25rem); color: #8ceaff; }
+        .card p { line-height: 1.7; color: #cfddf6; }
+        button { border: 0; border-radius: 999px; padding: 11px 24px; color: #04101f; background: #69e1ff; font: inherit; font-weight: 800; cursor: pointer; box-shadow: 0 0 18px #44cfff88; }
+        button:hover { background: #b0f1ff; transform: translateY(-1px); }
+        .help { margin: 12px 0 0; text-align: center; color: #9eafd0; font-size: .9rem; }
+        .toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+        .toolbar button { padding: 7px 14px; font-size: .9rem; }
+        @media (max-width: 480px) { header { align-items: flex-start; flex-direction: column; } .stats { gap: 14px; font-size: .9rem; } }
+    </style>
+</head>
+<body>
+<main class="game">
+    <header>
+        <h1>✦ 星際防衛戰 ✦</h1>
+        <div class="stats" aria-live="polite"><div>分數 <span id="score">0</span></div><div>生命 <span id="lives">♥♥♥</span></div></div>
+    </header>
+    <div class="toolbar"><button id="soundButton" type="button" aria-pressed="false">🔊 音效：開</button></div>
+    <section class="screen" aria-label="太空射擊遊戲">
+        <canvas id="gameCanvas" width="900" height="600" aria-label="遊戲畫面"></canvas>
+        <div class="overlay" id="overlay">
+            <div class="card">
+                <h2 id="messageTitle">準備出擊！</h2>
+                <p id="messageText">駕駛戰機擊落敵方飛船，躲避敵人的攻擊！<br>使用 ← → 或 A、D 移動，按空白鍵射擊。</p>
+                <button id="startButton" type="button">開始遊戲</button>
+            </div>
+        </div>
+    </section>
+    <p class="help">← → / A、D 移動　・　空白鍵射擊　・　音效可在開始後播放</p>
+</main>
+<script>
+(() => {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+    const overlay = document.getElementById('overlay');
+    const startButton = document.getElementById('startButton');
+    const titleEl = document.getElementById('messageTitle');
+    const textEl = document.getElementById('messageText');
+    const soundButton = document.getElementById('soundButton');
+    const keys = {};
+    const stars = Array.from({ length: 90 }, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: Math.random() * 2 + .5, speed: Math.random() * 35 + 15 }));
+    let player, bullets, enemies, enemyShots, particles, score, lives, running = false, lastTime = 0, spawnTimer = 0, shotTimer = 0, audioCtx, muted = false;
+
+    function sound(frequency, duration, type = 'sine', volume = .045, endFrequency = frequency) {
+        if (muted) return;
+        try {
+            audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            oscillator.type = type;
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, endFrequency), audioCtx.currentTime + duration);
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + duration);
+            oscillator.connect(gain); gain.connect(audioCtx.destination);
+            oscillator.start(); oscillator.stop(audioCtx.currentTime + duration);
+        } catch (_) { /* Audio is optional if the browser does not support it. */ }
+    }
+
+    function reset() {
+        player = { x: canvas.width / 2, y: canvas.height - 66, w: 42, h: 44, invulnerable: 0 };
+        bullets = []; enemies = []; enemyShots = []; particles = [];
+        score = 0; lives = 3; spawnTimer = 0; shotTimer = 0;
+        scoreEl.textContent = score; livesEl.textContent = '♥♥♥';
+    }
+
+    function start() {
+        reset(); running = true; overlay.hidden = true; lastTime = performance.now();
+        sound(440, .12, 'triangle', .04, 880);
+        requestAnimationFrame(loop);
+    }
+
+    function drawShip(x, y, scale = 1, enemy = false) {
+        ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+        ctx.fillStyle = enemy ? '#ff5577' : '#78eaff';
+        ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 14;
+        ctx.beginPath();
+        if (enemy) { ctx.moveTo(0, 23); ctx.lineTo(-22, -13); ctx.lineTo(-8, -8); ctx.lineTo(0, -18); ctx.lineTo(8, -8); ctx.lineTo(22, -13); ctx.closePath(); }
+        else { ctx.moveTo(0, -24); ctx.lineTo(19, 18); ctx.lineTo(7, 13); ctx.lineTo(0, 20); ctx.lineTo(-7, 13); ctx.lineTo(-19, 18); ctx.closePath(); }
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = enemy ? '#ffd1dc' : '#fff';
+        ctx.beginPath(); ctx.ellipse(0, 0, 4, 9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+
+    function burst(x, y, color) {
+        for (let i = 0; i < 12; i++) particles.push({ x, y, vx: (Math.random() - .5) * 230, vy: (Math.random() - .5) * 230, life: .45 + Math.random() * .35, color });
+    }
+
+    function update(dt) {
+        for (const star of stars) { star.y += star.speed * dt; if (star.y > canvas.height) { star.y = 0; star.x = Math.random() * canvas.width; } }
+        if (!running) return;
+        if (keys.ArrowLeft || keys.a) player.x -= 360 * dt;
+        if (keys.ArrowRight || keys.d) player.x += 360 * dt;
+        player.x = Math.max(25, Math.min(canvas.width - 25, player.x));
+        player.invulnerable = Math.max(0, player.invulnerable - dt);
+        shotTimer -= dt;
+        if ((keys.Space || keys[' ']) && shotTimer <= 0) {
+            bullets.push({ x: player.x, y: player.y - 24, vy: -560 }); shotTimer = .19;
+            sound(620, .07, 'square', .018, 250);
+        }
+        spawnTimer -= dt;
+        if (spawnTimer <= 0) {
+            const x = 35 + Math.random() * (canvas.width - 70);
+            enemies.push({ x, y: -30, w: 38, h: 38, speed: 100 + Math.min(score * .25, 110), sway: Math.random() * 3 });
+            spawnTimer = Math.max(.38, .9 - score * .002) + Math.random() * .35;
+        }
+        bullets.forEach(b => b.y += b.vy * dt);
+        enemies.forEach(e => { e.y += e.speed * dt; e.x += Math.sin(e.y * .025 + e.sway) * 55 * dt; });
+        enemyShots.forEach(b => b.y += b.vy * dt);
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const e = enemies[i];
+            if (Math.random() < dt * .32) enemyShots.push({ x: e.x, y: e.y + 18, vy: 230 + Math.min(score * .15, 80) });
+            for (let j = bullets.length - 1; j >= 0; j--) {
+                const b = bullets[j];
+                if (Math.abs(e.x - b.x) < 25 && Math.abs(e.y - b.y) < 27) {
+                    enemies.splice(i, 1); bullets.splice(j, 1); score += 10; scoreEl.textContent = score;
+                    burst(e.x, e.y, '#ff7393'); sound(180, .16, 'sawtooth', .04, 55); break;
+                }
+            }
+        }
+        for (let i = enemyShots.length - 1; i >= 0; i--) {
+            const b = enemyShots[i];
+            if (player.invulnerable <= 0 && Math.abs(player.x - b.x) < 19 && Math.abs(player.y - b.y) < 25) {
+                enemyShots.splice(i, 1); hitPlayer();
+            }
+        }
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            if (enemies[i].y > canvas.height + 30) { enemies.splice(i, 1); continue; }
+            if (player.invulnerable <= 0 && Math.abs(player.x - enemies[i].x) < 30 && Math.abs(player.y - enemies[i].y) < 34) {
+                burst(enemies[i].x, enemies[i].y, '#ff7393'); enemies.splice(i, 1); hitPlayer();
+            }
+        }
+        bullets = bullets.filter(b => b.y > -20);
+        enemyShots = enemyShots.filter(b => b.y < canvas.height + 20);
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+    }
+
+    function hitPlayer() {
+        lives--; livesEl.textContent = '♥'.repeat(Math.max(0, lives)) + '♡'.repeat(Math.max(0, 3 - lives));
+        player.invulnerable = 1.3; burst(player.x, player.y, '#75e9ff'); sound(260, .35, 'sawtooth', .06, 65);
+        if (lives <= 0) {
+            running = false; titleEl.textContent = '任務結束';
+            textEl.innerHTML = `最終得分：<strong>${score}</strong><br>再出發一次，保衛宇宙！`;
+            startButton.textContent = '重新開始'; overlay.hidden = false;
+        }
+    }
+
+    function draw() {
+        ctx.fillStyle = '#050a19'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        for (const s of stars) { ctx.globalAlpha = .35 + s.size / 4; ctx.fillStyle = '#d8f4ff'; ctx.fillRect(s.x, s.y, s.size, s.size * 1.8); }
+        ctx.globalAlpha = 1;
+        bullets.forEach(b => { ctx.fillStyle = '#7cf5ff'; ctx.shadowColor = '#4aeaff'; ctx.shadowBlur = 12; ctx.fillRect(b.x - 2, b.y - 11, 4, 17); });
+        ctx.shadowBlur = 0;
+        enemyShots.forEach(b => { ctx.fillStyle = '#ff6381'; ctx.shadowColor = '#ff315f'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2); ctx.fill(); });
+        ctx.shadowBlur = 0;
+        enemies.forEach(e => drawShip(e.x, e.y, .82, true));
+        if (player && (player.invulnerable <= 0 || Math.floor(performance.now() / 90) % 2 === 0)) drawShip(player.x, player.y);
+        particles.forEach(p => { ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 3, 3); });
+        ctx.globalAlpha = 1;
+    }
+
+    function loop(now) {
+        const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now;
+        update(dt); draw();
+        if (running) requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', event => {
+        if (['ArrowLeft', 'ArrowRight', 'Space', ' '].includes(event.code) || ['ArrowLeft', 'ArrowRight'].includes(event.key)) event.preventDefault();
+        keys[event.code] = true; keys[event.key.toLowerCase()] = true;
+    });
+    window.addEventListener('keyup', event => { keys[event.code] = false; keys[event.key.toLowerCase()] = false; });
+    startButton.addEventListener('click', start);
+    soundButton.addEventListener('click', () => {
+        muted = !muted; soundButton.textContent = muted ? '🔇 音效：關' : '🔊 音效：開';
+        soundButton.setAttribute('aria-pressed', String(muted)); if (!muted) sound(520, .1, 'triangle', .04, 720);
+    });
+    reset(); draw();
+})();
+</script>
+</body>
+</html>

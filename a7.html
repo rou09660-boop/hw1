@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#071a24">
+    <title>霓虹打磚塊</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --ink: #effff8;
+            --muted: #a7c9c0;
+            --mint: #7dffd2;
+            --lime: #d7ff61;
+            --coral: #ff7168;
+            --line: #8bffe35c;
+        }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            place-items: center;
+            padding: 28px 18px;
+            color: var(--ink);
+            font-family: "Trebuchet MS", "Microsoft JhengHei", sans-serif;
+            background-color: #071a24;
+            background-image:
+                radial-gradient(ellipse at 15% 5%, #17634d88, transparent 42%),
+                radial-gradient(ellipse at 92% 92%, #c0345b55, transparent 38%),
+                repeating-linear-gradient(125deg, transparent 0 42px, #b4ffea08 43px 44px);
+        }
+        button { font: inherit; }
+        .game { width: min(100%, 1000px); }
+        .topline { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin: 0 2px 15px; }
+        .eyebrow { margin: 0 0 5px; color: var(--lime); font-size: .73rem; font-weight: 800; letter-spacing: .18em; }
+        h1 { margin: 0; color: #f4fff9; font-size: clamp(1.6rem, 5vw, 2.55rem); line-height: 1.08; text-shadow: 0 3px 0 #308568, 0 8px 24px #54ffc566; }
+        .subtitle { margin: 7px 0 0; color: var(--muted); font-size: .9rem; }
+        .scoreboard { display: flex; align-items: stretch; gap: 8px; }
+        .score-item { min-width: 91px; padding: 8px 12px; border: 1px solid var(--line); background: #0d2a32d9; box-shadow: inset 0 1px #ffffff12; }
+        .score-label { display: block; color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .12em; }
+        .score-value { display: block; margin-top: 2px; color: var(--lime); font-size: 1.25rem; font-variant-numeric: tabular-nums; font-weight: 900; }
+        .toolbar { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 9px; }
+        .toolbar button, .overlay button {
+            min-height: 38px;
+            border: 1px solid #c5ffe273;
+            border-radius: 4px;
+            padding: 8px 13px;
+            color: var(--ink);
+            background: linear-gradient(180deg, #1c5248, #12372f);
+            box-shadow: 0 3px 0 #061912, inset 0 1px #ffffff20;
+            font-weight: 800;
+            cursor: pointer;
+            transition: transform .15s ease, filter .15s ease;
+        }
+        button:hover { filter: brightness(1.2); transform: translateY(-1px); }
+        button:active { transform: translateY(2px); box-shadow: 0 1px 0 #061912; }
+        button:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
+        .screen {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #95ffdcaa;
+            background: #06151d;
+            box-shadow: 0 0 0 5px #08231f, 0 0 0 6px #7dffd245, 0 22px 55px #0009, 0 0 42px #2dffad25;
+            isolation: isolate;
+        }
+        .screen::before { position: absolute; z-index: 1; inset: 0; border: 1px solid #ffffff17; content: ""; pointer-events: none; }
+        canvas { display: block; width: 100%; height: auto; aspect-ratio: 8 / 5; touch-action: none; }
+        .overlay {
+            position: absolute;
+            z-index: 2;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            text-align: center;
+            background: linear-gradient(125deg, #071b24e8, #092c27d9 58%, #381b2cd9);
+            backdrop-filter: blur(5px);
+        }
+        .overlay[hidden] { display: none; }
+        .intro { width: min(100%, 440px); animation: arrive .55s cubic-bezier(.2,.8,.2,1) both; }
+        .badge { display: inline-block; margin-bottom: 8px; padding: 5px 9px; border: 1px solid #d7ff6180; color: var(--lime); font-size: .7rem; font-weight: 900; letter-spacing: .14em; }
+        .overlay h2 { margin: 0; color: var(--mint); font-size: clamp(1.8rem, 6vw, 3rem); text-shadow: 0 4px 0 #137454, 0 0 24px #65ffba70; }
+        .overlay p { margin: 10px auto 18px; color: #d8f4e8; line-height: 1.75; }
+        .overlay button { min-height: 46px; padding: 10px 24px; border-color: #e0ff8d; color: #122119; background: linear-gradient(180deg, #e4ff83, #a9e947); box-shadow: 0 4px 0 #558c24, 0 10px 24px #bbff5140; }
+        .help { display: flex; justify-content: space-between; gap: 12px; margin: 13px 1px 0; color: var(--muted); font-size: .82rem; }
+        .help strong { color: var(--mint); }
+        @keyframes arrive { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @media (max-width: 600px) {
+            body { padding: 22px 12px; }
+            .topline { align-items: flex-start; flex-direction: column; gap: 12px; }
+            .scoreboard { width: 100%; }
+            .score-item { flex: 1; }
+            .help { flex-direction: column; gap: 4px; font-size: .76rem; }
+        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+    </style>
+</head>
+<body>
+<main class="game">
+    <header class="topline">
+        <div>
+            <p class="eyebrow">ARCADE / STAGE 01</p>
+            <h1>霓虹打磚塊</h1>
+            <p class="subtitle">瞄準反彈角度，清空整座霓虹磚牆。</p>
+        </div>
+        <div class="scoreboard" aria-live="polite">
+            <div class="score-item"><span class="score-label">SCORE</span><span class="score-value" id="score">0000</span></div>
+            <div class="score-item"><span class="score-label">磚塊</span><span class="score-value" id="remaining">50</span></div>
+            <div class="score-item"><span class="score-label">生命</span><span class="score-value" id="lives">♥♥♥</span></div>
+        </div>
+    </header>
+    <nav class="toolbar" aria-label="遊戲選項">
+        <button id="soundButton" type="button" aria-pressed="false">♫ 音效：開</button>
+        <button id="restartButton" type="button">↻ 重新開始</button>
+    </nav>
+    <section class="screen" aria-label="霓虹打磚塊遊戲區">
+        <canvas id="gameCanvas" width="960" height="600" aria-label="打磚塊遊戲畫面"></canvas>
+        <div class="overlay" id="overlay">
+            <div class="intro">
+                <span class="badge">READY PLAYER ONE</span>
+                <h2 id="messageTitle">準備開打？</h2>
+                <p id="messageText">移動球拍接住小球，撞碎所有彩色磚塊。<br>鍵盤 ← → / A、D，或直接移動滑鼠與手指。</p>
+                <button id="startButton" type="button">開始遊戲</button>
+            </div>
+        </div>
+    </section>
+    <p class="help"><span>操作：<strong>← → / A、D</strong> 或滑鼠、觸控移動球拍</span><span>空白鍵可發球　・　每塊磚 10 分</span></p>
+</main>
+<script>
+(() => {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const remainingEl = document.getElementById('remaining');
+    const livesEl = document.getElementById('lives');
+    const overlay = document.getElementById('overlay');
+    const titleEl = document.getElementById('messageTitle');
+    const textEl = document.getElementById('messageText');
+    const startButton = document.getElementById('startButton');
+    const soundButton = document.getElementById('soundButton');
+    const keys = {};
+    const colors = ['#ff6e70', '#ffad4f', '#ffe45b', '#a7f35c', '#53e8c2'];
+    const width = canvas.width;
+    const height = canvas.height;
+    const paddle = { x: width / 2, y: height - 49, w: 132, h: 17, speed: 620 };
+    const stars = Array.from({ length: 70 }, () => ({ x: Math.random() * width, y: Math.random() * height, r: Math.random() * 1.6 + .4, phase: Math.random() * Math.PI * 2 }));
+    let bricks = [];
+    let particles = [];
+    let ball = { x: width / 2, y: height - 83, vx: 265, vy: -370, r: 10 };
+    let score = 0;
+    let lives = 3;
+    let mode = 'ready';
+    let muted = false;
+    let audioCtx;
+    let lastTime = 0;
+    let animationId = 0;
+
+    function makeBricks() {
+        bricks = [];
+        const columns = 10;
+        const rows = 5;
+        const brickW = 76;
+        const brickH = 25;
+        const gapX = 12;
+        const gapY = 13;
+        const startX = (width - (columns * brickW + (columns - 1) * gapX)) / 2;
+        for (let row = 0; row < rows; row++) {
+            for (let column = 0; column < columns; column++) {
+                bricks.push({ x: startX + column * (brickW + gapX), y: 83 + row * (brickH + gapY), w: brickW, h: brickH, color: colors[row], alive: true });
+            }
+        }
+        remainingEl.textContent = bricks.length;
+    }
+
+    function resetBall() {
+        ball = { x: paddle.x, y: paddle.y - 24, vx: (Math.random() > .5 ? 1 : -1) * 265, vy: -370, r: 10 };
+    }
+
+    function reset() {
+        score = 0;
+        lives = 3;
+        paddle.x = width / 2;
+        particles = [];
+        mode = 'ready';
+        makeBricks();
+        resetBall();
+        scoreEl.textContent = '0000';
+        livesEl.textContent = '♥♥♥';
+        titleEl.textContent = '準備開打？';
+        textEl.innerHTML = '移動球拍接住小球，撞碎所有彩色磚塊。<br>鍵盤 ← → / A、D，或直接移動滑鼠與手指。';
+        startButton.textContent = '開始遊戲';
+        overlay.hidden = false;
+        draw();
+    }
+
+    function playTone(frequency, duration, type = 'sine', volume = .05, endFrequency = frequency) {
+        if (muted) return;
+        try {
+            audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            oscillator.type = type;
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, endFrequency), audioCtx.currentTime + duration);
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + duration);
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + duration);
+        } catch (_) { /* Audio is optional when Web Audio is unavailable. */ }
+    }
+
+    function burst(x, y, color) {
+        for (let i = 0; i < 14; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 65 + Math.random() * 190;
+            particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: .35 + Math.random() * .35, maxLife: .7, color, size: 2 + Math.random() * 3 });
+        }
+    }
+
+    function launch() {
+        if (mode === 'playing') return;
+        if (mode === 'won' || mode === 'lost') reset();
+        mode = 'playing';
+        overlay.hidden = true;
+        playTone(440, .14, 'triangle', .04, 760);
+        lastTime = performance.now();
+        if (!animationId) animationId = requestAnimationFrame(loop);
+    }
+
+    function setPaddleFromPointer(event) {
+        const bounds = canvas.getBoundingClientRect();
+        paddle.x = Math.max(paddle.w / 2 + 12, Math.min(width - paddle.w / 2 - 12, (event.clientX - bounds.left) * width / bounds.width));
+        if (mode !== 'playing') ball.x = paddle.x;
+        draw();
+    }
+
+    function loseBall() {
+        lives--;
+        livesEl.textContent = '♥'.repeat(Math.max(0, lives)) + '♡'.repeat(Math.max(0, 3 - lives));
+        playTone(290, .32, 'sawtooth', .055, 65);
+        if (lives <= 0) {
+            mode = 'lost';
+            titleEl.textContent = '球球落地了！';
+            textEl.innerHTML = `最終得分：<strong>${score}</strong><br>再試一次，這次把球接好！`;
+            startButton.textContent = '再玩一次';
+        } else {
+            mode = 'ready';
+            titleEl.textContent = '接著來！';
+            textEl.innerHTML = `剩下 ${lives} 次機會，移動球拍再出發。`;
+            startButton.textContent = '再來一球';
+        }
+        overlay.hidden = false;
+        resetBall();
+    }
+
+    function update(dt, now) {
+        for (const star of stars) star.phase += dt * .8;
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            particle.x += particle.vx * dt;
+            particle.y += particle.vy * dt;
+            particle.vx *= .985;
+            particle.vy *= .985;
+            particle.life -= dt;
+            if (particle.life <= 0) particles.splice(i, 1);
+        }
+        if (mode !== 'playing') return;
+        if (keys.ArrowLeft || keys.a) paddle.x -= paddle.speed * dt;
+        if (keys.ArrowRight || keys.d) paddle.x += paddle.speed * dt;
+        paddle.x = Math.max(paddle.w / 2 + 12, Math.min(width - paddle.w / 2 - 12, paddle.x));
+        const previousX = ball.x;
+        const previousY = ball.y;
+        ball.x += ball.vx * dt;
+        ball.y += ball.vy * dt;
+        if (ball.x - ball.r < 12) { ball.x = 12 + ball.r; ball.vx = Math.abs(ball.vx); playTone(330, .045, 'sine', .018); }
+        if (ball.x + ball.r > width - 12) { ball.x = width - 12 - ball.r; ball.vx = -Math.abs(ball.vx); playTone(330, .045, 'sine', .018); }
+        if (ball.y - ball.r < 12) { ball.y = 12 + ball.r; ball.vy = Math.abs(ball.vy); playTone(350, .05, 'sine', .018); }
+
+        if (ball.vy > 0 && previousY + ball.r <= paddle.y + 4 && ball.y + ball.r >= paddle.y && ball.x >= paddle.x - paddle.w / 2 - ball.r && ball.x <= paddle.x + paddle.w / 2 + ball.r) {
+            const hit = (ball.x - paddle.x) / (paddle.w / 2);
+            const speed = Math.min(610, Math.hypot(ball.vx, ball.vy) * 1.015);
+            const angle = hit * 1.05;
+            ball.vx = Math.sin(angle) * speed;
+            ball.vy = -Math.cos(angle) * speed;
+            ball.y = paddle.y - ball.r;
+            playTone(460 + Math.abs(hit) * 180, .09, 'triangle', .035, 700);
+        }
+        for (let i = bricks.length - 1; i >= 0; i--) {
+            const brick = bricks[i];
+            if (!brick.alive || ball.x + ball.r < brick.x || ball.x - ball.r > brick.x + brick.w || ball.y + ball.r < brick.y || ball.y - ball.r > brick.y + brick.h) continue;
+            brick.alive = false;
+            if (previousY + ball.r <= brick.y || previousY - ball.r >= brick.y + brick.h) ball.vy *= -1;
+            else ball.vx *= -1;
+            score += 10;
+            scoreEl.textContent = String(score).padStart(4, '0');
+            remainingEl.textContent = bricks.reduce((count, item) => count + Number(item.alive), 0);
+            burst(brick.x + brick.w / 2, brick.y + brick.h / 2, brick.color);
+            playTone(560 + (i % 5) * 90, .11, 'square', .025, 260);
+            break;
+        }
+        if (bricks.every(brick => !brick.alive)) {
+            mode = 'won';
+            titleEl.textContent = '漂亮，全數擊破！';
+            textEl.innerHTML = `你清空了磚牆，得到 <strong>${score}</strong> 分！`;
+            startButton.textContent = '再玩一次';
+            overlay.hidden = false;
+            playTone(520, .35, 'triangle', .05, 1040);
+        }
+        if (ball.y - ball.r > height) loseBall();
+        if (Math.abs(ball.x - previousX) + Math.abs(ball.y - previousY) > 1) {
+            particles.push({ x: ball.x, y: ball.y, vx: 0, vy: 0, life: .14, maxLife: .14, color: '#b5fff0', size: 3 });
+        }
+    }
+
+    function drawBrick(brick) {
+        if (!brick.alive) return;
+        const x = brick.x;
+        const y = brick.y;
+        const depth = 7;
+        ctx.save();
+        ctx.shadowColor = brick.color;
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = brick.color;
+        ctx.beginPath();
+        ctx.moveTo(x + 5, y + brick.h);
+        ctx.lineTo(x + brick.w, y + brick.h);
+        ctx.lineTo(x + brick.w + depth, y + brick.h + depth);
+        ctx.lineTo(x + depth, y + brick.h + depth);
+        ctx.closePath();
+        ctx.fill();
+        const face = ctx.createLinearGradient(x, y, x, y + brick.h);
+        face.addColorStop(0, '#ffffff');
+        face.addColorStop(.12, brick.color);
+        face.addColorStop(1, brick.color);
+        ctx.fillStyle = face;
+        ctx.beginPath();
+        ctx.roundRect(x, y, brick.w, brick.h, 4);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffffff75';
+        ctx.fillRect(x + 7, y + 4, brick.w - 14, 2);
+        ctx.fillStyle = '#06191a55';
+        ctx.fillRect(x + 7, y + brick.h - 5, brick.w - 14, 2);
+        ctx.restore();
+    }
+
+    function draw() {
+        const bg = ctx.createLinearGradient(0, 0, width, height);
+        bg.addColorStop(0, '#09212b');
+        bg.addColorStop(.52, '#0d272a');
+        bg.addColorStop(1, '#201a2c');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, width, height);
+        const glow = ctx.createRadialGradient(width / 2, 235, 12, width / 2, 265, 470);
+        glow.addColorStop(0, '#39c99b24');
+        glow.addColorStop(1, '#07151b00');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, width, height);
+        ctx.save();
+        ctx.strokeStyle = '#b4ffdc0b';
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= width; x += 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
+        for (let y = 0; y <= height; y += 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
+        ctx.restore();
+        for (const star of stars) {
+            ctx.globalAlpha = .25 + (Math.sin(star.phase) + 1) * .19;
+            ctx.fillStyle = '#d7fff1';
+            ctx.fillRect(star.x, star.y, star.r, star.r);
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ffffff08';
+        ctx.fillRect(12, 12, width - 24, height - 24);
+        bricks.forEach(drawBrick);
+        ctx.save();
+        ctx.shadowColor = '#70ffe0';
+        ctx.shadowBlur = 24;
+        const paddleGradient = ctx.createLinearGradient(0, paddle.y, 0, paddle.y + paddle.h);
+        paddleGradient.addColorStop(0, '#f5fff6');
+        paddleGradient.addColorStop(.24, '#82ffda');
+        paddleGradient.addColorStop(1, '#21a883');
+        ctx.fillStyle = paddleGradient;
+        ctx.beginPath();
+        ctx.roundRect(paddle.x - paddle.w / 2, paddle.y, paddle.w, paddle.h, 8);
+        ctx.fill();
+        ctx.fillStyle = '#ffffffaa';
+        ctx.fillRect(paddle.x - paddle.w / 2 + 13, paddle.y + 4, paddle.w - 26, 2);
+        ctx.restore();
+        ctx.save();
+        ctx.shadowColor = '#fff29a';
+        ctx.shadowBlur = 22;
+        const ballGradient = ctx.createRadialGradient(ball.x - 3, ball.y - 4, 1, ball.x, ball.y, ball.r);
+        ballGradient.addColorStop(0, '#ffffff');
+        ballGradient.addColorStop(.38, '#fffbb2');
+        ballGradient.addColorStop(1, '#ff9d36');
+        ctx.fillStyle = ballGradient;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        for (const particle of particles) {
+            ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+            ctx.fillStyle = particle.color;
+            ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#c3ffe133';
+        ctx.fillRect(24, height - 18, width - 48, 1);
+    }
+
+    function loop(now) {
+        const dt = Math.min((now - lastTime) / 1000, .025);
+        lastTime = now;
+        update(dt, now);
+        draw();
+        if (mode === 'playing' || particles.length || mode === 'ready') animationId = requestAnimationFrame(loop);
+        else animationId = 0;
+    }
+
+    canvas.addEventListener('pointermove', setPaddleFromPointer);
+    canvas.addEventListener('pointerdown', event => {
+        setPaddleFromPointer(event);
+        if (mode === 'ready') launch();
+    });
+    window.addEventListener('keydown', event => {
+        const key = event.key.toLowerCase();
+        if (['arrowleft', 'arrowright', ' '].includes(key)) event.preventDefault();
+        keys[event.code] = true;
+        keys[key] = true;
+        if (key === ' ' && mode === 'ready') launch();
+    });
+    window.addEventListener('keyup', event => {
+        keys[event.code] = false;
+        keys[event.key.toLowerCase()] = false;
+    });
+    startButton.addEventListener('click', launch);
+    document.getElementById('restartButton').addEventListener('click', reset);
+    soundButton.addEventListener('click', () => {
+        muted = !muted;
+        soundButton.textContent = muted ? '♫ 音效：關' : '♫ 音效：開';
+        soundButton.setAttribute('aria-pressed', String(muted));
+        if (!muted) playTone(500, .1, 'triangle', .04, 760);
+    });
+    reset();
+    animationId = requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
